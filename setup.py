@@ -79,7 +79,7 @@ setup(
     install_requires=[
         "ovos-skills-manager",
         "ovos-bus-client",
-        "requests"
+        "requests",
         "paramiko"
     ],
     include_package_data=True,
