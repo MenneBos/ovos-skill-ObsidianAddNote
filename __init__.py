@@ -11,7 +11,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
         super().__init__(*args, **kwargs)
         
         # Standaard pad naar settings.json in root van de skill
-        settings_file = os.path.join(os.path.dirname(__file__), "..", "settings.json")
+        settings_file = os.path.join(os.path.dirname(__file__), "settings.json")
         try:
             with open(settings_file, "r", encoding="utf-8") as f:
                 self.settings = json.load(f)
