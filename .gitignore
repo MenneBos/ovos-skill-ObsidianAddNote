@@ -1,0 +1,8 @@
+backlog.md
+*.sh
+*.crt
+*.key
+*.srl
+*.csr
+*.json
+Bash*

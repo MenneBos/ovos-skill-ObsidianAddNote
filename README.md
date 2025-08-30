@@ -1,0 +1,1 @@
+This is ovos-skill that will create an .md file in Obsidian folder on my Obsidian server.
