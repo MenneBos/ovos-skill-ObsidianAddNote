@@ -51,7 +51,7 @@ def get_version():
     return version
 
 def find_resource_files():
-    resource_base_dirs = ("locale", "vocab", "intent", "dialog")
+    resource_base_dirs = ("locale", "vocab", "intent", "dialog", "shared")
     base_dir = path.dirname(__file__)
     package_data = ["*.json"]
     for res in resource_base_dirs:
@@ -84,7 +84,7 @@ setup(
     ],
     include_package_data=True,
     package_dir={SKILL_PKG: ""},
-    package_data={SKILL_PKG: find_resource_files()},
+    package_data={"*.json"},
     packages=[SKILL_PKG],
     keywords='ovos skill Obsidian',
     entry_points={'ovos.plugin.skill': PLUGIN_ENTRY_POINT}
