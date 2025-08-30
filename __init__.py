@@ -10,64 +10,43 @@ from ovos_bus_client.message import Message
 class ObsidianAddNoteSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Standaard pad naar settings.json in root van de skill
-        settings_file = os.path.join(os.path.dirname(__file__), "settings.json")
-        try:
-            with open(settings_file, "r", encoding="utf-8") as f:
-                self.settings = json.load(f)
-        except Exception as e:
-            self.log.warning(f"Kon settings.json niet laden: {e}")
-            self.settings = {}
-
-        # Instellingen
-        self.vault_path = self.settings.get("obsidian_vault_path", "/tmp/obsidian")
-        self.city = self.settings.get("city", "Amsterdam,nl")
-        self.api_key = self.settings.get("openweathermap_api_key", None)
+        self.log = logging.getLogger(__name__)
+        # Regex om NOTE te detecteren in LLM output
+        self.note_pattern = re.compile(r"\bNOTE\b(.*)", re.DOTALL)
 
     def initialize(self):
-        # Luister passief naar speak-events van ovos-persona
-        self.bus.on("speak", self.handle_speak)
+        # Subscribe to all speak events
+        self.add_event("ovos.speech.recognition.intent_response", self.handle_speak)
+        self.add_event("speak", self.handle_speak)
 
     def handle_speak(self, message: Message):
-        meta = message.data.get("meta", {})
-        # Alleen events van ovos-persona
-        if meta.get("skill_id") != "ovos-persona":
+        # Huidige utterance van de LLM
+        utterance = message.data.get("utterance", "")
+        if not utterance:
             return
 
-        utterance = message.data.get("utterance", "")
+        meta = message.data.get("meta", {})
+        skill_source = meta.get("skill_id") or meta.get("skill")
+        if skill_source != "persona.openvoiceos":
+            return  # Alleen events van persona
+
+        # Zoek naar NOTE
         match = self.note_pattern.search(utterance)
         if not match:
             return
 
-        note_content = match.group(1).strip()
-        parsed = self.parse_note_content(note_content)
-        if not parsed:
-            self.log.warning("Kon note content niet parsen")
-            return
+        note_block = match.group(1)
+        title = self._extract_field(note_block, "Titel:")
+        goal = self._extract_field(note_block, "Doel:")
+        content = self._extract_field(note_block, "Inhoud:")
 
-        title, goal, content = parsed
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        origin = "ovos"
-        weather = self.get_weather()
-
-        md_text = self.create_markdown(title, goal, content, timestamp, origin, weather)
-        self.save_markdown(title, md_text)
-        self.log.info(f"Notitie '{title}' aangemaakt in Obsidian vault")
-
-    def parse_note_content(self, note_text):
-        """Haalt Title, Goal en Content uit de LLM note output"""
-        try:
-            title_match = re.search(r"Title:\s*(.*)", note_text)
-            goal_match = re.search(r"Goal:\s*(.*)", note_text)
-            content_match = re.search(r"Content:\s*(.*)", note_text, re.DOTALL)
-            if title_match and goal_match and content_match:
-                return (title_match.group(1).strip(),
-                        goal_match.group(1).strip(),
-                        content_match.group(1).strip())  # <-- {content}
-        except Exception as e:
-            self.log.error(f"Error parsing note: {e}")
-        return None
+        # Maak notitie aan
+        self.add_note(title, goal, content)
+    
+    def _extract_field(self, text, label):
+        pattern = rf"{label}\s*(.*)"
+        m = re.search(pattern, text)
+        return m.group(1).strip() if m else ""
 
     def get_weather(self):
         """Haal korte weersomschrijving + temp op van OpenWeatherMap API"""
@@ -125,11 +104,9 @@ class ObsidianAddNoteSkill(OVOSSkill):
         return template
 
 
-    def save_markdown(self, title, md_text):
-        """
-        Schrijf bestand naar een remote Windows (of Linux) systeem via SFTP (Paramiko).
-        """
-        ssh_cfg = (self.settings or {}).get("ssh", {})
+    def add_note(self, title, goal, content):
+        # Haal SSH/remote instellingen uit self.settings
+        ssh_cfg = self.settings.get("ssh", {})
         host = ssh_cfg.get("host")
         port = ssh_cfg.get("port", 22)
         username = ssh_cfg.get("username")
@@ -137,28 +114,30 @@ class ObsidianAddNoteSkill(OVOSSkill):
         remote_path = ssh_cfg.get("remote_path")
 
         if not (host and username and remote_path):
-            self.log.error("SSH settings onvolledig: host/username/remote_path vereist")
+            self.log.error("SSH settings incompleet")
             return
 
-        # Veilige bestandsnaam
-        safe_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).rstrip()
-        filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_title}.md"
-        remote_file = os.path.join(remote_path, filename)
+        # Weer ophalen
+        weather = self.get_weather()
+
+        # Markdown maken
+        timestamp = datetime.now()
+        markdown_text = self.create_markdown(title, goal, content, timestamp, "OVOS ObsidianAddNote Skill", weather)
+
+        # Filename veilig maken
+        filename_safe = f"{timestamp.strftime('%Y%m%d_%H%M%S')}_{title.replace(' ', '_')}.md"
+        remote_file = os.path.join(remote_path, filename_safe)
 
         try:
-            # Maak SSH client
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(host, port=port, username=username, password=password, timeout=10)
-
-            # Start SFTP
             sftp = ssh.open_sftp()
 
-            # Zorg dat remote pad bestaat (recursief)
+            # Maak remote folder aan indien nodig
             try:
                 sftp.chdir(remote_path)
             except IOError:
-                # Recursief mappen maken
                 dirs = remote_path.strip("/").split("/")
                 current = ""
                 for d in dirs:
@@ -169,9 +148,10 @@ class ObsidianAddNoteSkill(OVOSSkill):
                         sftp.mkdir(current)
                         sftp.chdir(current)
 
-            # Bestand schrijven
+            # Schrijf bestand
             with sftp.file(remote_file, "w", -1) as f:
-                f.write(md_text)
+                f.write(markdown_text)
+
             sftp.close()
             ssh.close()
             self.log.info(f"Notitie opgeslagen via SFTP: {remote_file}")
