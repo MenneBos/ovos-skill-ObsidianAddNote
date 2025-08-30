@@ -5,8 +5,8 @@ from os import walk, path
 from os.path import join, dirname
 # from setuptools import setup, find_packages
 
-URL = "https://github.com/MenneBos/ovos-skill-HObsidianAddNote"
-SKILL_CLAZZ = "ObsidianAddNote"  # needs to match __init__.py class name
+URL = "https://github.com/MenneBos/ovos-skill-ObsidianAddNote"
+SKILL_CLAZZ = "ObsidianAddNoteSkill"  # needs to match __init__.py class name
 PYPI_NAME = "ovos-skill-ObsidianAddNote"  # pip install PYPI_NAME
 
 # below derived from github url to ensure standard skill_id
