@@ -80,6 +80,7 @@ setup(
         "ovos-skills-manager",
         "ovos-bus-client",
         "requests"
+        "paramiko"
     ],
     include_package_data=True,
     package_dir={SKILL_PKG: ""},

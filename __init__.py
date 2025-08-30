@@ -2,6 +2,7 @@ import os
 import re
 from datetime import datetime
 import requests
+import paramiko
 from ovos_workshop.skills.ovos import OVOSSkill
 from ovos_bus_client.message import Message
 
@@ -124,12 +125,55 @@ class ObsidianAddNoteSkill(OVOSSkill):
 
 
     def save_markdown(self, title, md_text):
-        """Sla markdown op in de Obsidian vault"""
+        """
+        Schrijf bestand naar een remote Windows (of Linux) systeem via SFTP (Paramiko).
+        """
+        ssh_cfg = (self.settings or {}).get("ssh", {})
+        host = ssh_cfg.get("host")
+        port = ssh_cfg.get("port", 22)
+        username = ssh_cfg.get("username")
+        password = ssh_cfg.get("password")
+        remote_path = ssh_cfg.get("remote_path")
+
+        if not (host and username and remote_path):
+            self.log.error("SSH settings onvolledig: host/username/remote_path vereist")
+            return
+
+        # Veilige bestandsnaam
         safe_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).rstrip()
         filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_title}.md"
-        path = os.path.join(self.vault_path, filename)
+        remote_file = os.path.join(remote_path, filename)
+
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            # Maak SSH client
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(host, port=port, username=username, password=password, timeout=10)
+
+            # Start SFTP
+            sftp = ssh.open_sftp()
+
+            # Zorg dat remote pad bestaat (recursief)
+            try:
+                sftp.chdir(remote_path)
+            except IOError:
+                # Recursief mappen maken
+                dirs = remote_path.strip("/").split("/")
+                current = ""
+                for d in dirs:
+                    current += "/" + d
+                    try:
+                        sftp.chdir(current)
+                    except IOError:
+                        sftp.mkdir(current)
+                        sftp.chdir(current)
+
+            # Bestand schrijven
+            with sftp.file(remote_file, "w", -1) as f:
                 f.write(md_text)
+            sftp.close()
+            ssh.close()
+            self.log.info(f"Notitie opgeslagen via SFTP: {remote_file}")
+
         except Exception as e:
-            self.log.error(f"Kon notitie niet opslaan: {e}")
+            self.log.error(f"SFTP upload mislukt: {e}")
