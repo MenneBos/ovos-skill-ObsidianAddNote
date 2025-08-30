@@ -84,7 +84,7 @@ setup(
     ],
     include_package_data=True,
     package_dir={SKILL_PKG: ""},
-    package_data={SKILL_PKG: "*.json"},
+    package_data={SKILL_PKG: ["*.json"]},
     packages=[SKILL_PKG],
     keywords='ovos skill Obsidian',
     entry_points={'ovos.plugin.skill': PLUGIN_ENTRY_POINT}
