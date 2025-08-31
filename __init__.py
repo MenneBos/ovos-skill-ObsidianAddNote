@@ -6,14 +6,18 @@ import requests
 import paramiko
 from ovos_workshop.skills.ovos import OVOSSkill
 from ovos_bus_client.message import Message
+from ovos_utils.log import LOG
+
+DEFAULT_SETTINGS = {
+    "log_level": "INFO"
+}
 
 class ObsidianAddNoteSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Logger
-        self.log = logging.getLogger(__name__)
         # Regex om NOTE te detecteren in LLM output
-        self.note_pattern = re.compile(r"\bNOTE\b(.*)", re.DOTALL)
+        #self.note_pattern = re.compile(r"\bNOTE\b(.*)", re.DOTALL)
+        self.note_pattern = re.compile(r"\[?NOTE\]?(.*)", re.DOTALL)
         # API / settings placeholders
         self.api_key = None
         self.city = None
@@ -25,27 +29,30 @@ class ObsidianAddNoteSkill(OVOSSkill):
         # Subscribe naar speak events
         self.add_event("speak", self.handle_speak)
         self.add_event("ovos.speech.recognition.intent_response", self.handle_speak)
-        self.log.info("ObsidianAddNoteSkill ready")
+        LOG.info("ObsidianAddNoteSkill ready")
 
     def handle_speak(self, message: Message):
         utterance = message.data.get("utterance", "")
         if not utterance:
+            LOG.debug("No utterance in the speak event")
             return
 
         meta = message.data.get("meta", {})
         skill_source = meta.get("skill_id") or meta.get("skill")
         if skill_source != "persona.openvoiceos":
+            LOG.debug("No speak cooming from ovos-persona")
             return  # Alleen events van persona
 
         match = self.note_pattern.search(utterance)
         if not match:
+            LOG.debug("No NOTE found in the speak event ")
             return
 
         note_block = match.group(1)
         title = self._extract_field(note_block, "Titel:")
         goal = self._extract_field(note_block, "Doel:")
         content = self._extract_field(note_block, "Inhoud:")
-
+        LOG.debug("title: %s, goal: %s, content: %s", title, goal, content)
         self.add_note(title, goal, content)
 
     def _extract_field(self, text, label):
@@ -56,7 +63,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
     def get_weather(self):
         """Haal korte weersomschrijving + temp op van OpenWeatherMap API"""
         if not self.api_key:
-            self.log.warning("Geen OpenWeatherMap API key gevonden in settings")
+            LOG.debug("Geen OpenWeatherMap API key gevonden in settings")
             return "Onbekend"
         try:
             url = f"http://api.openweathermap.org/data/2.5/weather?q={self.city}&lang=nl&units=metric&appid={self.api_key}"
@@ -67,9 +74,9 @@ class ObsidianAddNoteSkill(OVOSSkill):
                 temp = data["main"]["temp"]
                 return f"{desc}, {temp:.0f}°C"
             else:
-                self.log.warning(f"Weer API gaf statuscode {response.status_code}")
+                LOG.warning(f"Weer API gaf statuscode {response.status_code}")
         except Exception as e:
-            self.log.warning(f"Weer ophalen mislukt: {e}")
+            LOG.warning(f"Weer ophalen mislukt: {e}")
         return "Onbekend"
 
     def create_markdown(self, title, goal, content, timestamp, origin, weather):
@@ -108,7 +115,7 @@ Oorsprong: {origin}
         remote_path = ssh_cfg.get("remote_path")
 
         if not (host and username and remote_path):
-            self.log.error("SSH settings incompleet")
+            LOG.error("SSH settings incompleet")
             return
 
         weather = self.get_weather()
