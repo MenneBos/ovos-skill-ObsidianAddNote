@@ -31,56 +31,29 @@ class ObsidianAddNoteSkill(OVOSSkill):
         self.add_event("ovos.speech.recognition.intent_response", self.handle_speak)
         LOG.info("ObsidianAddNoteSkill ready")
 
-    def handle_speak(self, message):
-        utterance = message.data.get("utterance", "").strip()
+    def handle_speak(self, message: Message):
+        utterance = message.data.get("utterance", "")
+        if not utterance:
+            LOG.debug("No utterance in the speak event")
+            return
+
         meta = message.data.get("meta", {})
         skill_source = meta.get("skill_id") or meta.get("skill")
         if skill_source != "persona.openvoiceos":
+            LOG.debug("No speak cooming from ovos-persona")
+            return  # Alleen events van persona
+
+        match = self.note_pattern.search(utterance)
+        if not match:
+            LOG.debug("No NOTE found in the speak event ")
             return
 
-        # Start nieuwe note
-        if "NOTE" in utterance:
-            self.collecting_note = True
-            self.current_note = {"title": None, "goal": None, "content": ""}
-            self.await_field = None
-            self.log.info("NOTE detected, start collecting note")
-            return
-
-        if not self.collecting_note:
-            return
-
-        # Detecteer ENDNOTE
-        if "[ENDNOTE]" in utterance:
-            self.log.info(f"Note complete: {self.current_note}")
-            self.add_note(
-                self.current_note["title"],
-                self.current_note["goal"],
-                self.current_note["content"].strip()
-            )
-            # Reset
-            self.collecting_note = False
-            self.current_note = {"title": None, "goal": None, "content": ""}
-            self.await_field = None
-            return
-
-        # Als we wachten op een veld
-        if self.await_field:
-            if self.await_field == "content":
-                # Content kan meerdere regels hebben
-                self.current_note["content"] += ("\n" + utterance)
-            else:
-                self.current_note[self.await_field] = utterance
-            self.await_field = None
-            return
-
-        # Nieuw veld detecteren
-        if utterance.startswith("Title:"):
-            self.await_field = "title"
-        elif utterance.startswith("Goal:"):
-            self.await_field = "goal"
-        elif utterance.startswith("Content:"):
-            self.await_field = "content"
-
+        note_block = match.group(1)
+        title = self._extract_field(note_block, "Titel:")
+        goal = self._extract_field(note_block, "Doel:")
+        content = self._extract_field(note_block, "Inhoud:")
+        LOG.debug("title: %s, goal: %s, content: %s", title, goal, content)
+        self.add_note(title, goal, content)
 
     def _extract_field(self, text, label):
         pattern = rf"{label}\s*(.*)"
