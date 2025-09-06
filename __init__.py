@@ -26,7 +26,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
 
     def initialize(self):
         self.collecting_note = False
-        self.current_note = {"title": None, "goal": None, "content": ""}
+        self.current_note = {"titel": None, "doel": None, "inhoud": ""}
         self.await_field = None
         # Haal settings uit OVOS settings
         self.api_key = self.settings.get("api_key")
@@ -44,49 +44,45 @@ class ObsidianAddNoteSkill(OVOSSkill):
             return
 
         # Start nieuwe note
-        if self.note_start_pattern.search(utterance):
+        if utterance == "[NOTE]" and not self.collecting_note:
             self.collecting_note = True
-            self.current_note = {"title": None, "goal": None, "content": ""}
-            self.await_field = None
+            self.current_note = {"titel": None, "doel": None, "inhoud": ""}
+            self.await_field = "titel"
             self.log.info("NOTE detected, start collecting note")
             return
 
+        # END NOTE
+        if utterance == "[ENDNOTE]" and self.collecting_note:
+            self.add_note(
+                self.current_note["titel"],
+                self.current_note["doel"],
+                self.current_note["inhoud"]
+            )
+            self.collecting_note = False
+            self.current_note = {"titel": None, "doel": None, "inhoud": ""}
+            self.await_field = None
+            self.log.info("ENDNOTE detected, note saved")
+            return
+        
         if not self.collecting_note:
             return
 
-        # Detecteer ENDNOTE
-        if self.note_end_pattern.search(utterance):
-            self.log.info(f"ENDNOTE detected, final note: {self.current_note}")
-            self.add_note(
-                self.current_note["title"],
-                self.current_note["goal"],
-                self.current_note["content"].strip()
-            )
-            self.collecting_note = False
-            self.current_note = {"title": None, "goal": None, "content": ""}
-            self.await_field = None
-            return
-        
-        # Collect fields
+        # Veld detectie
         if self.await_field:
-            # Append to content if collecting content, otherwise just set
-            if self.await_field == "content":
-                self.current_note["content"] += utterance + "\n"
+            # Vul het veld
+            if self.await_field == "inhoud":
+                # Append content voor meerdere events
+                self.current_note["inhoud"] += utterance + "\n"
             else:
                 self.current_note[self.await_field] = utterance
-            self.await_field = None
-            return
-        
-        # Detect which field comes next
-        if utterance.lower().startswith("titel:"):
-            self.await_field = "title"
-        elif utterance.lower().startswith("doel:"):
-            self.await_field = "goal"
-        elif utterance.lower().startswith("inhoud:"):
-            self.await_field = "content"
-
-        # Debug log
-        self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
+            # Volgend veld bepalen
+            if self.await_field == "titel":
+                self.await_field = "doel"
+            elif self.await_field == "doel":
+                self.await_field = "inhoud"
+            elif self.await_field == "inhoud":
+                self.await_field = "inhoud"  # blijft content verzamelen tot [ENDNOTE]
+            self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
 
 
     def _extract_field(self, text, label):
