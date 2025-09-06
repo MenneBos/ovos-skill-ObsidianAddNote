@@ -43,46 +43,50 @@ class ObsidianAddNoteSkill(OVOSSkill):
         if skill_source != "persona.openvoiceos":
             return
 
-        # Start nieuwe note
-        if utterance == "[NOTE]" and not self.collecting_note:
+        if "[NOTE]" in utterance:
             self.collecting_note = True
             self.current_note = {"titel": None, "doel": None, "inhoud": ""}
-            self.await_field = "titel"
-            self.log.info("NOTE detected, start collecting note")
-            return
-
-        # END NOTE
-        if utterance == "[ENDNOTE]" and self.collecting_note:
-            self.add_note(
-                self.current_note["titel"],
-                self.current_note["doel"],
-                self.current_note["inhoud"]
-            )
-            self.collecting_note = False
-            self.current_note = {"titel": None, "doel": None, "inhoud": ""}
             self.await_field = None
-            self.log.info("ENDNOTE detected, note saved")
+            self.log.info("NOTE detected, start collecting note")
             return
         
         if not self.collecting_note:
             return
 
-        # Veld detectie
+        # END NOTE
+        # ENDNOTE = afsluiten
+        if "[ENDNOTE]" in utterance:
+            self.log.info(f"NOTE complete: {self.current_note}")
+            self.add_note(
+                self.current_note["titel"],
+                self.current_note["doel"],
+                self.current_note["inhoud"].strip()
+            )
+            self.collecting_note = False
+            self.await_field = None
+            return
+        
+        # Label-detectie
+        if utterance.lower().startswith("titel"):
+            self.await_field = "titel"
+            return
+        elif utterance.lower().startswith("doel"):
+            self.await_field = "doel"
+            return
+        elif utterance.lower().startswith("inhoud"):
+            self.await_field = "inhoud"
+            return
+
+        # Waarde opslaan
         if self.await_field:
-            # Vul het veld
             if self.await_field == "inhoud":
-                # Append content voor meerdere events
                 self.current_note["inhoud"] += utterance + "\n"
             else:
                 self.current_note[self.await_field] = utterance
-            # Volgend veld bepalen
-            if self.await_field == "titel":
-                self.await_field = "doel"
-            elif self.await_field == "doel":
-                self.await_field = "inhoud"
-            elif self.await_field == "inhoud":
-                self.await_field = "inhoud"  # blijft content verzamelen tot [ENDNOTE]
             self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
+            # Reset behalve voor inhoud
+            if self.await_field != "inhoud":
+                self.await_field = None
 
 
     def _extract_field(self, text, label):
