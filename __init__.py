@@ -78,11 +78,11 @@ class ObsidianAddNoteSkill(OVOSSkill):
             return
         
         # Detect which field comes next
-        if utterance.lower().startswith("title:"):
+        if utterance.lower().startswith("titel:"):
             self.await_field = "title"
-        elif utterance.lower().startswith("goal:"):
+        elif utterance.lower().startswith("doel:"):
             self.await_field = "goal"
-        elif utterance.lower().startswith("inhoud:") or utterance.lower().startswith("content:"):
+        elif utterance.lower().startswith("inhoud:"):
             self.await_field = "content"
 
         # Debug log
