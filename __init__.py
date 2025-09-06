@@ -17,12 +17,17 @@ class ObsidianAddNoteSkill(OVOSSkill):
         super().__init__(*args, **kwargs)
         # Regex om NOTE te detecteren in LLM output
         #self.note_pattern = re.compile(r"\bNOTE\b(.*)", re.DOTALL)
-        self.note_pattern = re.compile(r"\[?NOTE\]?(.*)", re.DOTALL)
+        #self.note_pattern = re.compile(r"\[?NOTE\]?(.*)", re.DOTALL)
+        self.note_start_pattern = re.compile(r"\[?\s*NOTE\s*\]?", re.IGNORECASE)
+        self.note_end_pattern = re.compile(r"\[?\s*ENDNOTE\s*\]?", re.IGNORECASE)
         # API / settings placeholders
         self.api_key = None
         self.city = None
 
     def initialize(self):
+        self.collecting_note = False
+        self.current_note = {"title": None, "goal": None, "content": ""}
+        self.await_field = None
         # Haal settings uit OVOS settings
         self.api_key = self.settings.get("api_key")
         self.city = self.settings.get("city", "Nederland")
@@ -39,7 +44,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
             return
 
         # Start nieuwe note
-        if "NOTE" in utterance:
+        if self.note_start_pattern.search(utterance):
             self.collecting_note = True
             self.current_note = {"title": None, "goal": None, "content": ""}
             self.await_field = None
@@ -50,36 +55,38 @@ class ObsidianAddNoteSkill(OVOSSkill):
             return
 
         # Detecteer ENDNOTE
-        if "[ENDNOTE]" in utterance:
-            self.log.info(f"Note complete: {self.current_note}")
+        if self.note_end_pattern.search(utterance):
+            self.log.info(f"ENDNOTE detected, final note: {self.current_note}")
             self.add_note(
                 self.current_note["title"],
                 self.current_note["goal"],
                 self.current_note["content"].strip()
             )
-            # Reset
             self.collecting_note = False
             self.current_note = {"title": None, "goal": None, "content": ""}
             self.await_field = None
             return
-
-        # Als we wachten op een veld
+        
+        # Collect fields
         if self.await_field:
+            # Append to content if collecting content, otherwise just set
             if self.await_field == "content":
-                # Content kan meerdere regels hebben
-                self.current_note["content"] += ("\n" + utterance)
+                self.current_note["content"] += utterance + "\n"
             else:
                 self.current_note[self.await_field] = utterance
             self.await_field = None
             return
-
-        # Nieuw veld detecteren
-        if utterance.startswith("Title:"):
+        
+        # Detect which field comes next
+        if utterance.lower().startswith("title:"):
             self.await_field = "title"
-        elif utterance.startswith("Goal:"):
+        elif utterance.lower().startswith("goal:"):
             self.await_field = "goal"
-        elif utterance.startswith("Content:"):
+        elif utterance.lower().startswith("inhoud:") or utterance.lower().startswith("content:"):
             self.await_field = "content"
+
+        # Debug log
+        self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
 
 
     def _extract_field(self, text, label):
@@ -144,6 +151,11 @@ Oorsprong: {origin}
         if not (host and username and remote_path):
             LOG.error("SSH settings incompleet")
             return
+        
+        if not all([title, goal, content]):
+            self.log.warning("Cannot add note, missing fields")
+            return
+        self.log.info(f"Adding note:\nTitle: {title}\nGoal: {goal}\nContent:\n{content}")
 
         weather = self.get_weather()
         timestamp = datetime.now()
