@@ -43,11 +43,14 @@ class ObsidianAddNoteSkill(OVOSSkill):
         if skill_source != "persona.openvoiceos":
             return
 
-        # NOTE detecteren (met of zonder [])
-        if re.fullmatch(r"\[?NOTE\]?", utterance.strip(), re.IGNORECASE):
+        # Debug log
+        self.log.debug(f"Received utterance: {utterance}")
+
+        # Start nieuwe note bij NOTE
+        if "NOTE" in utterance.upper() and "ENDNOTE" not in utterance.upper():
             self.collecting_note = True
             self.current_note = {"titel": None, "doel": None, "inhoud": ""}
-            self.await_field = "titel"
+            self.await_field = None
             self.log.info("NOTE detected, start collecting note")
             return
 
@@ -68,40 +71,44 @@ class ObsidianAddNoteSkill(OVOSSkill):
         if not self.collecting_note:
             return
 
-        # Label-detectie
-        if utterance.lower().startswith("titel"):
-            self.await_field = "titel"
-            return
-        elif utterance.lower().startswith("doel"):
-            self.await_field = "doel"
-            return
-        elif utterance.lower().startswith("inhoud"):
-            self.await_field = "inhoud"
-            return
+        # Wachten op een specifiek veld
+        if self.await_field:
+            if self.await_field == "inhoud":
+                # Check of ENDNOTE in dezelfde utterance zit
+                if "ENDNOTE" in utterance.upper():
+                    content_part = utterance.replace("ENDNOTE", "").strip()
+                    if content_part:
+                        self.current_note["inhoud"] += content_part + "\n"
 
-        # Als we wachten op inhoud
-        if self.await_field == "inhoud":
-            # Check of ENDNOTE voorkomt in dit stuk
-            if "ENDNOTE" in utterance.upper():
-                # Voeg alleen content tot ENDNOTE toe
-                content_part = utterance.replace("ENDNOTE", "").strip()
-                if content_part:
-                    self.current_note["inhoud"] += content_part + "\n"
-
-                self.log.info(f"ENDNOTE detected inside utterance, finalizing note: {self.current_note}")
-                self.add_note(
-                    self.current_note["titel"],
-                    self.current_note["doel"],
-                    self.current_note["inhoud"]
-                )
-                # Reset state
-                self.collecting_note = False
-                self.current_note = {"titel": None, "doel": None, "inhoud": ""}
-                self.await_field = None
-                return
+                    self.log.info(f"ENDNOTE detected, finalizing note: {self.current_note}")
+                    self.add_note(
+                        self.current_note["titel"],
+                        self.current_note["doel"],
+                        self.current_note["inhoud"]
+                    )
+                    # Reset state
+                    self.collecting_note = False
+                    self.current_note = {"titel": None, "doel": None, "inhoud": ""}
+                    self.await_field = None
+                    return
+                else:
+                    # Normale contentregel
+                    self.current_note["inhoud"] += utterance.strip() + "\n"
             else:
-                # Normale contentregel toevoegen
-                self.current_note["inhoud"] += utterance.strip() + "\n"
+                # Titel of doel
+                self.current_note[self.await_field] = utterance.strip()
+                self.await_field = None
+        else:
+            # Detecteer welk veld het volgende event zal bevatten
+            if utterance.lower().startswith("titel"):
+                self.await_field = "titel"
+            elif utterance.lower().startswith("doel"):
+                self.await_field = "doel"
+            elif utterance.lower().startswith("inhoud"):
+                self.await_field = "inhoud"
+
+        # Debug status log
+        self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
 
 
     def _extract_field(self, text, label):
