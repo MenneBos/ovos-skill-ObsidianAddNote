@@ -79,16 +79,29 @@ class ObsidianAddNoteSkill(OVOSSkill):
             self.await_field = "inhoud"
             return
 
-        # Waarde opslaan
-        if self.await_field:
-            if self.await_field == "inhoud":
-                self.current_note["inhoud"] += utterance + "\n"
-            else:
-                self.current_note[self.await_field] = utterance
-            self.log.debug(f"Collecting note: {self.current_note}, awaiting field: {self.await_field}")
-            # Reset behalve voor inhoud
-            if self.await_field != "inhoud":
+        # Als we wachten op inhoud
+        if self.await_field == "inhoud":
+            # Check of ENDNOTE voorkomt in dit stuk
+            if "ENDNOTE" in utterance.upper():
+                # Voeg alleen content tot ENDNOTE toe
+                content_part = utterance.replace("ENDNOTE", "").strip()
+                if content_part:
+                    self.current_note["inhoud"] += content_part + "\n"
+
+                self.log.info(f"ENDNOTE detected inside utterance, finalizing note: {self.current_note}")
+                self.add_note(
+                    self.current_note["titel"],
+                    self.current_note["doel"],
+                    self.current_note["inhoud"]
+                )
+                # Reset state
+                self.collecting_note = False
+                self.current_note = {"titel": None, "doel": None, "inhoud": ""}
                 self.await_field = None
+                return
+            else:
+                # Normale contentregel toevoegen
+                self.current_note["inhoud"] += utterance.strip() + "\n"
 
 
     def _extract_field(self, text, label):
