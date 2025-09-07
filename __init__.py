@@ -18,8 +18,8 @@ class ObsidianAddNoteSkill(OVOSSkill):
         # Regex om NOTE te detecteren in LLM output
         #self.note_pattern = re.compile(r"\bNOTE\b(.*)", re.DOTALL)
         #self.note_pattern = re.compile(r"\[?NOTE\]?(.*)", re.DOTALL)
-        self.note_start_pattern = re.compile(r"\[?\s*NOTE\s*\]?", re.IGNORECASE)
-        self.note_end_pattern = re.compile(r"\[?\s*ENDNOTE\s*\]?", re.IGNORECASE)
+        #self.note_start_pattern = re.compile(r"\[?\s*NOTE\s*\]?", re.IGNORECASE)
+        #self.note_end_pattern = re.compile(r"\[?\s*ENDNOTE\s*\]?", re.IGNORECASE)
         # API / settings placeholders
         self.api_key = None
         self.city = None
@@ -43,29 +43,31 @@ class ObsidianAddNoteSkill(OVOSSkill):
         if skill_source != "persona.openvoiceos":
             return
 
-        if "[NOTE]" in utterance:
+        # NOTE detecteren (met of zonder [])
+        if re.search(r"\[?NOTE\]?", utterance, re.IGNORECASE):
             self.collecting_note = True
             self.current_note = {"titel": None, "doel": None, "inhoud": ""}
-            self.await_field = None
+            self.await_field = "titel"
             self.log.info("NOTE detected, start collecting note")
+            return
+
+
+        # ENDNOTE detecteren (met of zonder [])
+        if re.search(r"\[?ENDNOTE\]?", utterance, re.IGNORECASE):
+            self.log.info(f"ENDNOTE detected, finalizing note: {self.current_note}")
+            self.add_note(
+                self.current_note["titel"],
+                self.current_note["doel"],
+                self.current_note["inhoud"]
+            )
+            self.collecting_note = False
+            self.current_note = {"titel": None, "doel": None, "inhoud": ""}
+            self.await_field = None
             return
         
         if not self.collecting_note:
             return
 
-        # END NOTE
-        # ENDNOTE = afsluiten
-        if "[ENDNOTE]" in utterance:
-            self.log.info(f"NOTE complete: {self.current_note}")
-            self.add_note(
-                self.current_note["titel"],
-                self.current_note["doel"],
-                self.current_note["inhoud"].strip()
-            )
-            self.collecting_note = False
-            self.await_field = None
-            return
-        
         # Label-detectie
         if utterance.lower().startswith("titel"):
             self.await_field = "titel"
