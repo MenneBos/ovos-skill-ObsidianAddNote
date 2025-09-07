@@ -44,7 +44,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
             return
 
         # NOTE detecteren (met of zonder [])
-        if re.search(r"\[?NOTE\]?", utterance, re.IGNORECASE):
+        if re.fullmatch(r"\[?NOTE\]?", utterance.strip(), re.IGNORECASE):
             self.collecting_note = True
             self.current_note = {"titel": None, "doel": None, "inhoud": ""}
             self.await_field = "titel"
@@ -53,7 +53,7 @@ class ObsidianAddNoteSkill(OVOSSkill):
 
 
         # ENDNOTE detecteren (met of zonder [])
-        if re.search(r"\[?ENDNOTE\]?", utterance, re.IGNORECASE):
+        if re.fullmatch(r"\[?ENDNOTE\]?", utterance.strip(), re.IGNORECASE):
             self.log.info(f"ENDNOTE detected, finalizing note: {self.current_note}")
             self.add_note(
                 self.current_note["titel"],
