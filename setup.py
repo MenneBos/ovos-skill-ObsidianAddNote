@@ -53,7 +53,7 @@ def get_version():
 def find_resource_files():
     resource_base_dirs = ("locale", "vocab", "intent", "dialog", "shared")
     base_dir = path.dirname(__file__)
-    package_data = ["*.json", "settings.json"]
+    package_data = ["*.json", "settingsmeta.json"]
     for res in resource_base_dirs:
         if path.isdir(path.join(base_dir, res)):
             for (directory, _, files) in walk(path.join(base_dir, res)):

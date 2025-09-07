@@ -210,7 +210,7 @@ Oorsprong: {origin}
 
             sftp.close()
             ssh.close()
-            self.log.info(f"Notitie opgeslagen via SFTP: {remote_file}")
+            self.log.info(f"Notitie opgeslagen via SFTP : {remote_file}")
 
         except Exception as e:
             self.log.error(f"SFTP upload mislukt: {e}")
